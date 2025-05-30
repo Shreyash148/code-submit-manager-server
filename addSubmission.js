@@ -1,7 +1,6 @@
 const db=require('./db');
 const express = require('express');
 const route = express.Router();
-const {Redis} = require('ioredis');
 const redis = new Redis("rediss://default:ca7f5b5c05c74b01b272b81b1157b675@usw1-vocal-gazelle-34568.upstash.io:34568");
 
 route.post("/add",async (req,res)=>{
