@@ -9,7 +9,7 @@ route.post("/add",async (req,res)=>{
     const randomString = Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
     const counter = Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
     const submissionId=timestamp+randomString+counter;
-    const created_at=new Date().toISOString();
+    const created_at=new Date();
     await redis.hset("subIds",submissionId,submissionId);
     const q="INSERT INTO submission(`username`,`language`,`stdin`,`sourceCode`,`submissionId`,`stdout`,`created_at`) VALUES(?)";
     const values=[username,language,stdin,sourcecode,submissionId,stdout,created_at];
@@ -26,7 +26,7 @@ route.get("/show",async(req,res)=>{
         for (const [key, value] of Object.entries(ids)) {
             const check=await redis.get(value);
             if(check){
-                allSubmit.push(JSON.parse(check));
+                allSubmit.push(check);
             }else{
                 const q="SELECT * FROM submission WHERE submissionId=?";
                 db.query(q,value,async(err,data)=>{
@@ -45,5 +45,3 @@ route.get("/show",async(req,res)=>{
         });
     }
 });
-
-module.exports=route;
