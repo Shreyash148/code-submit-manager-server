@@ -1,22 +1,42 @@
 const db=require('./db');
 const express = require('express');
 const route = express.Router();
+const { Redis } = require('ioredis');
 const redis = new Redis("rediss://default:ca7f5b5c05c74b01b272b81b1157b675@usw1-vocal-gazelle-34568.upstash.io:34568");
+
 
 route.post("/add",async (req,res)=>{
     const {username,language,stdin,sourcecode,stdout}=req.body;
     const timestamp = Math.floor(Date.now() / 1000).toString(16);
-    const randomString = Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+const created_at = new Date().toISOString();
+
     const counter = Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
-    const submissionId=timestamp+randomString+counter;
-    const created_at=new Date();
+// Example payload validation before use
+if (!username || !language || !stdin || !sourcecode || !stdout) {
+  return res.status(400).json({ error: 'Missing required field' });
+}
+
+const values = [username, language, stdin, sourcecode, submissionId, stdout, created_at];
+db.query(q, [values], (err, data) => {
+    if (err) return res.json(err);
+    return res.json("data inserted successfully");
+});
+
     await redis.hset("subIds",submissionId,submissionId);
     const q="INSERT INTO submission(`username`,`language`,`stdin`,`sourceCode`,`submissionId`,`stdout`,`created_at`) VALUES(?)";
     const values=[username,language,stdin,sourcecode,submissionId,stdout,created_at];
     db.query(q,[values],(err,data)=>{
         if(err) return res.json(err);
         return res.json("data inserted successfully");
-    })
+// Consider transaction or error rollback logic for consistency, e.g. remove redis if DB fails
+db.query(q, [values], async (err, data) => {
+    if (err) {
+        await redis.hdel("subIds", submissionId); // rollback redis
+        return res.json(err);
+    }
+    return res.json("data inserted successfully");
+});
+
 });
 
 route.get("/show",async(req,res)=>{
@@ -26,7 +46,25 @@ route.get("/show",async(req,res)=>{
         for (const [key, value] of Object.entries(ids)) {
             const check=await redis.get(value);
             if(check){
-                allSubmit.push(check);
+const submitPromises = Object.entries(ids).map(async ([key, value]) => {
+    const check = await redis.get(value);
+    if (check) {
+        return JSON.parse(check);
+    } else {
+        const q = "SELECT * FROM submission WHERE submissionId=?";
+        return new Promise((resolve, reject) => {
+            db.query(q, value, async (err, data) => {
+                if (err) return reject(err);
+                await redis.set(value, JSON.stringify(data[0]));
+                resolve(data[0]);
+            });
+        });
+    }
+});
+
+allSubmit = await Promise.all(submitPromises);
+return res.json(allSubmit);
+
             }else{
                 const q="SELECT * FROM submission WHERE submissionId=?";
                 db.query(q,value,async(err,data)=>{
